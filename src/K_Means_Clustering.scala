@@ -1,8 +1,10 @@
+import Assignment2.{rawPostings, sc}
 import org.apache.spark.SparkConf
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkContext._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.rdd.PairRDDFunctions
+import org.apache.spark.sql.Row
 
 import annotation.tailrec
 import scala.reflect.ClassTag
@@ -122,7 +124,7 @@ class Assignment2 extends Serializable {
   }
 
   def sampleVectors(vectors : RDD[(Int, Int)]) : Array[(Int, Int)] = {
-    vectors.takeSample(withReplacement = false, kmeansKernels, 8991)
+    vectors.takeSample(withReplacement = false, kmeansKernels)
   }
 
 
@@ -135,25 +137,29 @@ class Assignment2 extends Serializable {
   //
 
   /** Main kmeans computation */
-  final def kmeans(means: Array[(Int, Int)], vectors: RDD[(Int, Int)], debug: Boolean) : Array[(Int, Int)] = {
+  final def kmeans(means: Array[(Int, Int)], vectors: RDD[(Int, Int)], debug: Boolean) : RDD[(Int, Iterable[(Int, Int)])] = {
 
     var tempDist = 50.0D
-    println("initial vectors")
-    means.foreach(println)
+    //println("initial vectors")
+    //means.foreach(println)
 
     while(!converged(tempDist)) {
       val closest = vectors.map (p => (findClosest(p, means), p))
 
-      println("new pointStats vectors")
+      //println("new pointStats vectors")
       val pointStats = closest.groupByKey()
-      pointStats.foreach(println)
+      //pointStats.foreach(println)
 
       val newPoints = pointStats.map  {pair => (pair._1, averageVectors(pair._2))}.collectAsMap()
-      newPoints.foreach(println)
+      //newPoints.foreach(println)
 
       tempDist = 0.0D
       for (i <- 0 until kmeansKernels) {
-        tempDist += euclideanDistance(means(i), newPoints(i))
+      //for (i <- 0 until newPoints.size) {
+        //println(i, newPoints(i), means(i))
+        if (means.isDefinedAt(i) &&  newPoints.isDefinedAt(i)) {
+          tempDist += euclideanDistance(means(i), newPoints(i))
+      }
       }
 
       for (newP <- newPoints) {
@@ -161,12 +167,12 @@ class Assignment2 extends Serializable {
       }
       println(s"Finished iteration (delta = $tempDist)")
 
-      //val clusterstats = pointStats.map  {pair => (pair._1,  (pair._2.size, averageVectors(pair._2)._2, computeMedian(pair._2)))}.collectAsMap()
-      //clusterstats.foreach(println)
     }
-    means
+    val closest = vectors.map (p => (findClosest(p, means), p))
+    val pointStats = closest.groupByKey()
+    pointStats.foreach(println)
 
-
+    pointStats
   }
 
   //
@@ -234,14 +240,14 @@ class Assignment2 extends Serializable {
     if (length % 2 == 0) (lower.last + upper.head) / 2 else upper.head
   }
 
-  def clusterResults(means: Array[(Int, Int)], vectors: RDD[(Int, Int)]) : Array[(Int, Int)] = {
-    means
+  def clusterResults(means: RDD[(Int, Iterable[(Int, Int)])], vectors: RDD[(Int, Int)]) : scala.collection.Map[Int, (Int, (Int,Int), Int)] = {
+    means.map  {pair => (pair._1,  (pair._2.size, averageVectors(pair._2), computeMedian(pair._2)))}.collectAsMap()
   }
 
   //  Displaying results:
 
-  def printResults(results : Array[(Int, Int)]): Unit = {
-    results.foreach(println)
+  def printResults(results : scala.collection.Map[Int, (Int, (Int,Int), Int)]) : Unit = {
+    results.foreach { case (id: Int, (size: Int, centroid: (Int, Int), median: Int)) =>
+      println("%s %d %s %d".format(centroid, size, centroid._2, median)) }
   }
-
 }
